@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 # ─── Wallpaper Background ────────────────────────────────────────────────────
-WALLPAPER_PATH = "/home/udhay/Pictures/wallpaper.jpg"
+WALLPAPER_PATH = "wallpaper.jpg"
 
 def get_bg_base64(path: str) -> str:
     try:
