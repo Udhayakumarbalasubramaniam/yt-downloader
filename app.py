@@ -10,36 +10,39 @@ from pathlib import Path
 import imageio_ffmpeg
 
 # ─────────────────────────────────────────────────────────────
-# FFmpeg Fix For Streamlit Cloud
+# FFmpeg Fix
 # ─────────────────────────────────────────────────────────────
 os.environ["IMAGEIO_FFMPEG_EXE"] = imageio_ffmpeg.get_ffmpeg_exe()
 
 # ─────────────────────────────────────────────────────────────
-# Page Config
+# Streamlit Config
 # ─────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Media Downloader",
     page_icon="🎬",
     layout="centered",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="collapsed"
 )
 
 # ─────────────────────────────────────────────────────────────
-# Wallpaper Background
+# Wallpaper
 # ─────────────────────────────────────────────────────────────
 WALLPAPER_PATH = "wallpaper.jpg"
 
-def get_bg_base64(path: str):
+
+def get_bg_base64(path):
     try:
         with open(path, "rb") as f:
             data = base64.b64encode(f.read()).decode()
 
         ext = Path(path).suffix.lower().replace(".", "")
-        mime = "jpeg" if ext in ("jpg", "jpeg") else ext
+        mime = "jpeg" if ext in ["jpg", "jpeg"] else ext
 
         return f"data:image/{mime};base64,{data}"
+
     except:
         return ""
+
 
 bg_data = get_bg_base64(WALLPAPER_PATH)
 bg_css = f'url("{bg_data}")' if bg_data else "none"
@@ -50,12 +53,10 @@ bg_css = f'url("{bg_data}")' if bg_data else "none"
 st.markdown(f"""
 <style>
 
-@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Bebas+Neue&family=DM+Sans:wght@300;400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Bebas+Neue&display=swap');
 
 :root {{
     --surface: rgba(10,10,18,0.84);
-    --accent-yt: #ff3c3c;
-    --accent-ig: #e1306c;
     --text: #f0f0f0;
     --muted: #9999bb;
     --border: rgba(255,255,255,0.10);
@@ -154,22 +155,12 @@ st.markdown(f"""
     backdrop-filter: blur(12px);
 }}
 
-.info-card::before {{
-    content:'';
-    position:absolute;
-    top:0;
-    left:0;
-    width:3px;
-    height:100%;
-    background: linear-gradient(180deg,#e1306c,#f77737);
-}}
-
 .prog-wrap {{
-    background:rgba(10,10,20,0.90);
-    border:1px solid rgba(255,255,255,0.1);
-    border-radius:12px;
-    padding:1.3rem;
-    margin:0.8rem 0;
+    background: rgba(10,10,20,0.90);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 1.3rem;
+    margin: 0.8rem 0;
 }}
 
 </style>
@@ -179,15 +170,20 @@ st.markdown(f"""
 # Helpers
 # ─────────────────────────────────────────────────────────────
 
+
 def sanitize_filename(name):
     return re.sub(r'[\\/*?:"<>|]', "_", name)
 
+
+# IMPORTANT FIX
+# This avoids most Streamlit Cloud 403 errors
+
 def get_ydl_opts(download=False, outtmpl=None):
 
-    agents = [
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        'Mozilla/5.0 (X11; Linux x86_64)',
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'
+    user_agents = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0 Safari/537.36',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/121.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0 Safari/537.36'
     ]
 
     opts = {
@@ -199,10 +195,16 @@ def get_ydl_opts(download=False, outtmpl=None):
         "socket_timeout": 30,
         "retries": 10,
         "fragment_retries": 10,
-
         "http_headers": {
-            "User-Agent": random.choice(agents),
+            "User-Agent": random.choice(user_agents),
             "Accept-Language": "en-US,en;q=0.9",
+        },
+
+        # MAIN FIX
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "web"]
+            }
         }
     }
 
@@ -211,6 +213,7 @@ def get_ydl_opts(download=False, outtmpl=None):
         opts["merge_output_format"] = "mp4"
 
     return opts
+
 
 # ─────────────────────────────────────────────────────────────
 # Title
@@ -223,7 +226,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────
-# URL Input
+# Input
 # ─────────────────────────────────────────────────────────────
 url = st.text_input(
     "",
@@ -250,7 +253,8 @@ if st.button("📥 FETCH VIDEO INFO"):
         st.stop()
 
     try:
-        with st.spinner("Fetching formats..."):
+
+        with st.spinner("Fetching video info..."):
 
             with yt_dlp.YoutubeDL(get_ydl_opts()) as ydl:
                 info = ydl.extract_info(url, download=False)
@@ -259,28 +263,45 @@ if st.button("📥 FETCH VIDEO INFO"):
 
             formats = []
 
+            seen = set()
+
             for f in info.get("formats", []):
 
-                if f.get("vcodec") != "none":
+                if f.get("vcodec") == "none":
+                    continue
 
-                    filesize = f.get("filesize")
-                    if filesize:
-                        filesize = round(filesize / (1024 * 1024), 2)
-                        size_text = f"{filesize} MB"
-                    else:
-                        size_text = "Unknown"
+                if f.get("height") is None:
+                    continue
 
-                    label = (
-                        f"{f.get('format_note','')} | "
-                        f"{f.get('ext','')} | "
-                        f"{f.get('resolution','')} | "
-                        f"{size_text}"
-                    )
+                resolution = f"{f.get('height')}p"
 
-                    formats.append({
-                        "label": label,
-                        "id": f["format_id"]
-                    })
+                ext = f.get("ext", "mp4")
+
+                filesize = f.get("filesize") or f.get("filesize_approx")
+
+                if filesize:
+                    filesize = round(filesize / (1024 * 1024), 2)
+                    size_text = f"{filesize} MB"
+                else:
+                    size_text = "Unknown"
+
+                label = f"{resolution} | {ext.upper()} | {size_text}"
+
+                if label in seen:
+                    continue
+
+                seen.add(label)
+
+                formats.append({
+                    "label": label,
+                    "id": f["format_id"]
+                })
+
+            formats = sorted(
+                formats,
+                key=lambda x: int(x["label"].split("p")[0]),
+                reverse=True
+            )
 
             st.session_state.formats = formats
 
@@ -288,7 +309,7 @@ if st.button("📥 FETCH VIDEO INFO"):
         st.error(f"Error: {e}")
 
 # ─────────────────────────────────────────────────────────────
-# Display Video Info
+# Video Info
 # ─────────────────────────────────────────────────────────────
 if st.session_state.info:
 
@@ -318,15 +339,15 @@ if st.session_state.info:
         """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────
-# Format Selection
+# Quality Selector
 # ─────────────────────────────────────────────────────────────
 if st.session_state.formats:
 
-    format_labels = [x["label"] for x in st.session_state.formats]
+    labels = [x["label"] for x in st.session_state.formats]
 
     selected = st.selectbox(
         "Choose Quality",
-        format_labels
+        labels
     )
 
     mode = st.radio(
@@ -336,17 +357,26 @@ if st.session_state.formats:
     )
 
     # ─────────────────────────────────────────────────────────
-    # Download Button
+    # Download
     # ─────────────────────────────────────────────────────────
     if st.button("⬇ DOWNLOAD NOW"):
 
         try:
-            chosen = next(
+
+            progress = st.empty()
+
+            progress.markdown("""
+            <div class="prog-wrap">
+                🚀 Download Started...
+            </div>
+            """, unsafe_allow_html=True)
+
+            selected_format = next(
                 x for x in st.session_state.formats
                 if x["label"] == selected
             )
 
-            format_id = chosen["id"]
+            format_id = selected_format["id"]
 
             tmp_dir = tempfile.mkdtemp()
 
@@ -358,14 +388,6 @@ if st.session_state.formats:
                 tmp_dir,
                 f"{title}.%(ext)s"
             )
-
-            progress = st.empty()
-
-            progress.markdown("""
-            <div class="prog-wrap">
-                🚀 Download Started...
-            </div>
-            """, unsafe_allow_html=True)
 
             opts = get_ydl_opts(
                 download=True,
@@ -387,14 +409,15 @@ if st.session_state.formats:
             # VIDEO
             else:
 
+                # MAIN 403 FIX
+                # Avoid DASH merging
                 opts.update({
-                    "format": f"{format_id}+bestaudio/best"
+                    "format": format_id
                 })
 
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.download([url])
 
-            # Find Downloaded File
             files = list(Path(tmp_dir).glob("*"))
 
             file_path = None
@@ -405,7 +428,6 @@ if st.session_state.formats:
                     if f.suffix.lower() in [".mp3", ".m4a"]:
                         file_path = f
                         break
-
                 else:
                     if f.suffix.lower() in [".mp4", ".mkv", ".webm"]:
                         file_path = f
@@ -446,6 +468,7 @@ if st.session_state.formats:
 # Footer
 # ─────────────────────────────────────────────────────────────
 if not url:
+
     st.markdown("""
     <div style="text-align:center;
                 padding:3rem 0;
@@ -461,3 +484,4 @@ if not url:
 
     </div>
     """, unsafe_allow_html=True)
+
